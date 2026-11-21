@@ -3,14 +3,20 @@
 # SCRIPT DE CONFIGURACIÓN DE NAT Y ENRUTAMIENTO EN LINUX ROUTER
 # Topología: img/nat.png
 # IP WAN (Internet): 10.160.10.114 (eth0)
-# Local-FortiGate:   10.200.1.1 (vía eth1: 10.200.1.254) -> Puerto 6565
-# Remote-FortiGate:  10.200.3.1 (vía eth3: 10.200.3.254) -> Puerto 6666
+#
+# Mapeo de Puertos:
+# - Local-FortiGate (10.200.1.1 vía eth1):
+#     * HTTPS GUI:  WAN 6565 -> 10.200.1.1:443
+#     * SSH CLI:    WAN 2221 (o 6522) -> 10.200.1.1:22
+# - Remote-FortiGate (10.200.3.1 vía eth3):
+#     * HTTPS GUI:  WAN 6666 -> 10.200.3.1:443
+#     * SSH CLI:    WAN 2222 (o 6622) -> 10.200.3.1:22
 # ==============================================================================
 
 set -e
 
 echo "=================================================================="
-echo "🛡️  INICIANDO CONFIGURACIÓN DE NAT EN LINUX ROUTER"
+echo "🛡️  INICIANDO CONFIGURACIÓN DE NAT (HTTPS + SSH) EN LINUX ROUTER"
 echo "=================================================================="
 
 # ------------------------------------------------------------------------------
@@ -48,38 +54,61 @@ WAN_IF="eth0"
 WAN_IP="10.160.10.114"
 
 LOCAL_FGT_IP="10.200.1.1"
-LOCAL_FGT_PORT_EXT="6565"
+LOCAL_FGT_HTTPS_PORT="6565"
+LOCAL_FGT_SSH_PORT="2221"
+LOCAL_FGT_SSH_ALT="6522"
 
 REMOTE_FGT_IP="10.200.3.1"
-REMOTE_FGT_PORT_EXT="6666"
+REMOTE_FGT_HTTPS_PORT="6666"
+REMOTE_FGT_SSH_PORT="2222"
+REMOTE_FGT_SSH_ALT="6622"
 
-FGT_MGMT_PORT="443" # Puerto HTTPS por defecto de FortiOS
+FGT_HTTPS="443"
+FGT_SSH="22"
 
 # ------------------------------------------------------------------------------
-# FASE 3: REGLAS DNAT (PORT FORWARDING)
+# FASE 3: REGLAS DNAT (PORT FORWARDING HTTPS + SSH)
 # ------------------------------------------------------------------------------
 echo "=== [3/6] Aplicando Reglas de Port Forwarding (DNAT en PREROUTING) ==="
-# Acceso a Local-FortiGate (Puerto 6565 -> 10.200.1.1:443)
-iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$LOCAL_FGT_PORT_EXT" -j DNAT --to-destination "$LOCAL_FGT_IP:$FGT_MGMT_PORT"
 
-# Acceso a Remote-FortiGate (Puerto 6666 -> 10.200.3.1:443)
-iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$REMOTE_FGT_PORT_EXT" -j DNAT --to-destination "$REMOTE_FGT_IP:$FGT_MGMT_PORT"
+# --- HTTPS (Web GUI) ---
+iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$LOCAL_FGT_HTTPS_PORT" -j DNAT --to-destination "$LOCAL_FGT_IP:$FGT_HTTPS"
+iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$REMOTE_FGT_HTTPS_PORT" -j DNAT --to-destination "$REMOTE_FGT_IP:$FGT_HTTPS"
+
+# --- SSH (CLI Management) ---
+# Local-FortiGate SSH (puertos 2221 y 6522)
+iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$LOCAL_FGT_SSH_PORT" -j DNAT --to-destination "$LOCAL_FGT_IP:$FGT_SSH"
+iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$LOCAL_FGT_SSH_ALT" -j DNAT --to-destination "$LOCAL_FGT_IP:$FGT_SSH"
+
+# Remote-FortiGate SSH (puertos 2222 y 6622)
+iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$REMOTE_FGT_SSH_PORT" -j DNAT --to-destination "$REMOTE_FGT_IP:$FGT_SSH"
+iptables -t nat -A PREROUTING -p tcp -d "$WAN_IP" --dport "$REMOTE_FGT_SSH_ALT" -j DNAT --to-destination "$REMOTE_FGT_IP:$FGT_SSH"
 
 # ------------------------------------------------------------------------------
 # FASE 4: FILTRADO FORWARD
 # ------------------------------------------------------------------------------
 echo "=== [4/6] Permitiendo Tráfico en la Cadena FORWARD ==="
-iptables -A FORWARD -p tcp -d "$LOCAL_FGT_IP" --dport "$FGT_MGMT_PORT" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
-iptables -A FORWARD -p tcp -d "$REMOTE_FGT_IP" --dport "$FGT_MGMT_PORT" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+# Tráfico hacia Local-FortiGate (HTTPS 443 y SSH 22)
+iptables -A FORWARD -p tcp -d "$LOCAL_FGT_IP" --dport "$FGT_HTTPS" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -p tcp -d "$LOCAL_FGT_IP" --dport "$FGT_SSH" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+
+# Tráfico hacia Remote-FortiGate (HTTPS 443 y SSH 22)
+iptables -A FORWARD -p tcp -d "$REMOTE_FGT_IP" --dport "$FGT_HTTPS" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -p tcp -d "$REMOTE_FGT_IP" --dport "$FGT_SSH" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+
 iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # ------------------------------------------------------------------------------
 # FASE 5: MASQUERADE / SNAT
 # ------------------------------------------------------------------------------
 echo "=== [5/6] Aplicando Masquerade / SNAT (Garantiza respuesta bidireccional) ==="
-# SNAT hacia los FortiGate para garantizar que respondan al Linux Router
-iptables -t nat -A POSTROUTING -o eth1 -d "$LOCAL_FGT_IP" -p tcp --dport "$FGT_MGMT_PORT" -j MASQUERADE
-iptables -t nat -A POSTROUTING -o eth3 -d "$REMOTE_FGT_IP" -p tcp --dport "$FGT_MGMT_PORT" -j MASQUERADE
+# SNAT hacia Local-FortiGate
+iptables -t nat -A POSTROUTING -o eth1 -d "$LOCAL_FGT_IP" -p tcp --dport "$FGT_HTTPS" -j MASQUERADE
+iptables -t nat -A POSTROUTING -o eth1 -d "$LOCAL_FGT_IP" -p tcp --dport "$FGT_SSH" -j MASQUERADE
+
+# SNAT hacia Remote-FortiGate
+iptables -t nat -A POSTROUTING -o eth3 -d "$REMOTE_FGT_IP" -p tcp --dport "$FGT_HTTPS" -j MASQUERADE
+iptables -t nat -A POSTROUTING -o eth3 -d "$REMOTE_FGT_IP" -p tcp --dport "$FGT_SSH" -j MASQUERADE
 
 # Enmascaramiento general de salida hacia Internet para los laboratorios
 iptables -t nat -A POSTROUTING -o "$WAN_IF" -j MASQUERADE
@@ -97,12 +126,16 @@ fi
 
 echo ""
 echo "=================================================================="
-echo "🎉 CONFIGURACIÓN APLICADA EXITOSAMENTE"
+echo "🎉 CONFIGURACIÓN (HTTPS + SSH) APLICADA EXITOSAMENTE"
 echo "=================================================================="
-echo "Acceso Web a FortiGates:"
-echo "👉 Local-FortiGate:  https://${WAN_IP}:${LOCAL_FGT_PORT_EXT}"
-echo "👉 Remote-FortiGate: https://${WAN_IP}:${REMOTE_FGT_PORT_EXT}"
+echo "🌐 Acceso Web (HTTPS):"
+echo "   👉 Local-FortiGate:  https://${WAN_IP}:${LOCAL_FGT_HTTPS_PORT}"
+echo "   👉 Remote-FortiGate: https://${WAN_IP}:${REMOTE_FGT_HTTPS_PORT}"
+echo ""
+echo "💻 Acceso Consola (SSH CLI):"
+echo "   👉 Local-FortiGate:  ssh admin@${WAN_IP} -p ${LOCAL_FGT_SSH_PORT}  (o puerto ${LOCAL_FGT_SSH_ALT})"
+echo "   👉 Remote-FortiGate: ssh admin@${WAN_IP} -p ${REMOTE_FGT_SSH_PORT}  (o puerto ${REMOTE_FGT_SSH_ALT})"
 echo ""
 echo "En caso de emergencia para restaurar la configuración anterior:"
-echo "👉 iptables-restore < ${LATEST_BACKUP}"
+echo "   👉 iptables-restore < ${LATEST_BACKUP}"
 echo "=================================================================="
