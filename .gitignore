@@ -1,5 +1,6 @@
-configs/
-docs/
-labs/
-img/
-*.py
+# Archivos temporales y de sistema
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+Thumbs.db
