@@ -65,7 +65,7 @@ bash /opt/fortigate/scripts/rollback_nat_router.sh
 
 ### Opción A: Vía Git (Recomendado)
 ```bash
-git clone git@github.com:gdiazes/fortigate.git /opt/fortigate
+git clone https://github.com/gdiazes/fortigate.git /opt/fortigate
 chmod +x /opt/fortigate/scripts/*.sh
 bash /opt/fortigate/scripts/config_nat_router.sh
 ```
