@@ -11,11 +11,21 @@
 
 ## Prerrequisitos: Restaurar el estado base del laboratorio
 
+### Vía Interfaz Web (GUI):
 1. Conéctate a la GUI de **Local-FortiGate** (`https://10.0.1.254` o a través de tu NAT `https://10.160.10.114:6565`) con:
    * **Usuario:** `admin`
    * **Contraseña:** `password`
 2. En la esquina superior derecha, haz clic en **`admin` > `Configuration` > `Revisions`**.
 3. Expande la lista de revisiones (`+`), selecciona la revisión con el comentario **`local-firewall-authentication`** *(nota: en algunas imágenes aparece con la errata `local-firewall-authenticaiton`)* y haz clic en **Revert** > **OK** para reiniciar.
+
+### Vía Consola (CLI):
+```fortios
+# 1. Listar las revisiones disponibles en el dispositivo:
+execute revision list
+
+# 2. Revertir a la revisión base (reemplaza <ID> por el número correspondiente a 'local-firewall-authentication'):
+execute revision revert <ID>
+```
 
 > **💡 Nota técnica:** Restaurar la revisión garantiza que las interfaces (`port1` WAN y `port3` LAN), la política `Full_Access`, el perfil `Category_Monitor` y el usuario local `student` estén exactamente en el punto de partida esperado.
 
@@ -27,6 +37,7 @@ En este ejercicio, FortiGate no almacenará contraseñas de los usuarios finales
 
 ## Paso 1.1: Configurar el servidor LDAP en FortiGate
 
+### Vía Interfaz Web (GUI):
 1. En **Local-FortiGate**, ve a **`User & Authentication > LDAP Servers`** y haz clic en **Create New**.
 2. Completa los campos exactamente con estos valores **(con el DN de `Username` ya corregido)**:
 
@@ -45,14 +56,8 @@ En este ejercicio, FortiGate no almacenará contraseñas de los usuarios finales
 3. Haz clic en **Test Connectivity** y verifica que el estado muestre **Successful** (en verde).
 4. Haz clic en **OK**.
 
-> **💡 Nota técnica (¿Por qué `Bind Type: Regular`?):**
-> Cuando un usuario inicia sesión escribiendo solo `aduser1`, FortiGate no sabe en qué subcarpeta del árbol LDAP está ubicado. Con el tipo **Regular**, FortiGate se conecta primero usando la cuenta `adadmin`, busca dónde vive `uid=aduser1` dentro del *Base DN*, obtiene su ruta completa y finalmente valida la contraseña de `aduser1` contra LDAP.
-
-> **🔒 Recomendación de Seguridad (Endurecimiento / Producción):**
-> El puerto `389` sin cifrado envía credenciales en texto plano. En producción (y como prueba opcional en este lab si importas el certificado CA del FortiAuthenticator), debes activar **Secure Connection**, seleccionar **LDAPS (puerto 636)** o **STARTTLS**, y elegir el certificado de la CA emisora. Además, usa siempre una cuenta de servicio LDAP con permisos de **solo lectura**.
-
-### Equivalente rápido en CLI (opcional):
-```text
+### Vía Consola (CLI):
+```fortios
 config user ldap
     edit "External_Server"
         set server "10.0.1.150"
@@ -66,17 +71,40 @@ config user ldap
 end
 ```
 
+> **💡 Nota técnica (¿Por qué `Bind Type: Regular`?):**
+> Cuando un usuario inicia sesión escribiendo solo `aduser1`, FortiGate no sabe en qué subcarpeta del árbol LDAP está ubicado. Con el tipo **Regular**, FortiGate se conecta primero usando la cuenta `adadmin`, busca dónde vive `uid=aduser1` dentro del *Base DN*, obtiene su ruta completa y finalmente valida la contraseña de `aduser1` contra LDAP.
+
+> **🔒 Recomendación de Seguridad (Endurecimiento / Producción):**
+> El puerto `389` sin cifrado envía credenciales en texto plano. En producción (y como prueba opcional en este lab si importas el certificado CA del FortiAuthenticator), debes activar **Secure Connection**, seleccionar **LDAPS (puerto 636)** o **STARTTLS**, y elegir el certificado de la CA emisora. Además, usa siempre una cuenta de servicio LDAP con permisos de **solo lectura**.
+
 ---
 
 ## Paso 1.2: Asociar el grupo LDAP a un Firewall User Group
 
 FortiGate no aplica políticas directamente sobre un servidor LDAP completo, sino sobre **User Groups** (grupos de firewall) que filtran qué grupos remotos están autorizados.
 
+### Vía Interfaz Web (GUI):
 1. Ve a **`User & Authentication > User Groups`** y edita el grupo preconfigurado **`Remote-users`** *(verifica que sea de tipo **Firewall**)*.
 2. En la tabla **Remote Groups**, haz clic en **Add**.
 3. En **Remote Server**, selecciona **`External_Server`**.
 4. En la pestaña **Groups**, busca el grupo **`AD_users`** *(nota: con guion bajo, no guion medio)*, haz clic derecho sobre él y selecciona **Add Selected**.
 5. Confirma que aparece con un check verde (`cn=AD_users,ou=Training,dc=trainingAD,dc=training,dc=lab`) y haz clic en **OK** dos veces para guardar.
+
+### Vía Consola (CLI):
+```fortios
+config user group
+    edit "Remote-users"
+        set group-type firewall
+        set member "External_Server"
+        config match
+            edit 1
+                set server-name "External_Server"
+                set group-name "cn=AD_users,ou=Training,dc=trainingAD,dc=training,dc=lab"
+            next
+        end
+    next
+end
+```
 
 > **💡 Nota técnica:** Al hacer *group matching* contra `AD_users`, solo los usuarios LDAP que pertenezcan a ese grupo (como `aduser1` y `aduser2`) podrán hacer coincidencia (*match*) con las políticas que exijan el grupo `Remote-users`. Cualquier otro usuario LDAP válido fuera de ese grupo será rechazado por la política.
 
@@ -86,8 +114,9 @@ FortiGate no aplica políticas directamente sobre un servidor LDAP completo, sin
 
 *(Buena práctica: siempre valida la autenticación a nivel de servidor antes de exigirla en una política de producción).*
 
-1. Abre la consola CLI de **Local-FortiGate** y ejecuta:
-   ```text
+### Vía Consola (CLI):
+1. Ejecuta la prueba directa de autenticación contra el servidor LDAP:
+   ```fortios
    diagnose test authserver ldap External_Server aduser1 Training!
    ```
 2. Debes ver un resultado similar a:
@@ -96,23 +125,44 @@ FortiGate no aplica políticas directamente sobre un servidor LDAP completo, sin
    Group membership(s) - cn=AD_users,ou=Training,dc=trainingAD,dc=training,dc=lab
    ```
 
-> **🛠️ Tip de diagnóstico:** Si alguna vez falla esta prueba, activa el depurador del demonio de autenticación (`fnbamd`) en tiempo real:
-> ```text
+> **🛠️ Tip de diagnóstico por Consola (CLI):** Si alguna vez falla esta prueba, activa el depurador del demonio de autenticación (`fnbamd`) en tiempo real:
+> ```fortios
 > diagnose debug reset
 > diagnose debug application fnbamd -1
 > diagnose debug enable
 > ```
-> Ejecuta de nuevo la prueba y, al terminar, apaga el debug con `diagnose debug disable`.
+> Ejecuta de nuevo la prueba y, al terminar, apaga el debug con:
+> ```fortios
+> diagnose debug disable
+> ```
 
 ---
 
 ## Paso 1.4: Aplicar el grupo de usuarios a la política de firewall
 
+### Vía Interfaz Web (GUI):
 1. Ve a **`Policy & Objects > Firewall Policy`** y edita la política **`Full_Access`** (`port3` ➔ `port1`).
 2. En **Source**, haz clic en **`+`**, ve a la pestaña **User** y agrega **`Remote-users`** *(dejando también `LOCAL_SUBNET`)*.
 3. En **Security Profiles**, habilita **Web Filter** y selecciona **`Category_Monitor`** *(bloquea categorías como Hacking, Security Risk y Adult/Mature Content)*. Verifica que **SSL Inspection** esté en `certificate-inspection`.
 4. En **Logging Options**, habilita **Log Allowed Traffic** y selecciona **All Sessions**.
 5. Haz clic en **OK**.
+
+### Vía Consola (CLI):
+```fortios
+# 1. (Opcional) Verificar el ID de la política 'Full_Access':
+show firewall policy | grep -B 2 -A 5 "Full_Access"
+
+# 2. Modificar la política para exigir el grupo Remote-users y habilitar perfiles UTM:
+config firewall policy
+    edit 1
+        set groups "Remote-users"
+        set utm-status enable
+        set ssl-ssh-profile "certificate-inspection"
+        set webfilter-profile "Category_Monitor"
+        set logtraffic all
+    next
+end
+```
 
 > **💡 Nota técnica:**
 > * En **Source**, FortiGate evalúa **IP AND Usuario**: el tráfico debe venir de `LOCAL_SUBNET` **y además** pertenecer a un usuario autenticado de `Remote-users`.
@@ -133,10 +183,26 @@ FortiGate no aplica políticas directamente sobre un servidor LDAP completo, sin
    * **Category:** `Hacking`
    * **Username:** `aduser1`
    * **Group Name:** `Remote-users`
-4. Vuelve a la GUI de **Local-FortiGate**, ve a **`Dashboard > Users & Devices`** y haz clic en el widget **Firewall Users** para expandirlo.
-   * Verás a `aduser1` (`10.0.1.10`) bajo el grupo `Remote-users` y método `Firewall`.
-   * *(Opcional por CLI)*: Ejecuta `diagnose firewall auth list` y `show full-configuration user setting` para ver la sesión y el tiempo de expiración (`auth-timeout`, por defecto 5 minutos de inactividad).
-5. Selecciona **`aduser1`**, haz clic en **Deauthenticate** y confirma con **OK**.
+
+### Monitoreo y Desautenticación vía Interfaz Web (GUI):
+1. Ve a **`Dashboard > Users & Devices`** y haz clic en el widget **Firewall Users** para expandirlo.
+2. Verás a `aduser1` (`10.0.1.10`) bajo el grupo `Remote-users` y método `Firewall`.
+3. Selecciona **`aduser1`**, haz clic en **Deauthenticate** y confirma con **OK**.
+
+### Monitoreo y Desautenticación vía Consola (CLI):
+```fortios
+# 1. Ver usuarios de firewall autenticados en tiempo real:
+diagnose firewall auth list
+
+# 2. Consultar parámetros de tiempo de expiración y configuración global de usuarios:
+show full-configuration user setting
+
+# 3. Desautenticar la sesión del cliente por su IP:
+diagnose firewall auth delete 10.0.1.10
+
+# (Opcional) Desautenticar a todos los usuarios de la tabla de autenticación:
+# diagnose firewall auth clear
+```
 
 > **💡 Nota técnica:** Al desautenticar manualmente, FortiGate elimina inmediatamente la entrada de la tabla de usuarios autenticados en memoria (`firewall auth list`), obligando al usuario a volver a iniciar sesión en su próxima solicitud.
 
@@ -144,10 +210,20 @@ FortiGate no aplica políticas directamente sobre un servidor LDAP completo, sin
 
 ## Paso 1.6: Limpieza obligatoria antes del Ejercicio 2
 
+### Vía Interfaz Web (GUI):
 1. En **Local-FortiGate**, ve a **`Policy & Objects > Firewall Policy`** y edita **`Full_Access`**.
 2. En **Source**, elimina **`Remote-users`** (haciendo clic en la `X`), dejando únicamente **`LOCAL_SUBNET`**.
 3. Haz clic en **OK**.
 4. Cierra la ventana privada del navegador en **Local-Client**.
+
+### Vía Consola (CLI):
+```fortios
+config firewall policy
+    edit 1
+        unset groups
+    next
+end
+```
 
 > **⚠️ ¿Por qué es crítico este paso?** Si dejas `Remote-users` en la política, cuando el usuario local `student` se autentique por Captive Portal en el Ejercicio 2, no pertenecerá a `Remote-users` y el tráfico será bloqueado por la política de firewall.
 
@@ -159,6 +235,7 @@ En este ejercicio, la obligación de autenticarse se mueve **de la política a l
 
 ## Paso 2.1: Crear un grupo de usuarios para el Captive Portal
 
+### Vía Interfaz Web (GUI):
 1. En **Local-FortiGate**, ve a **`User & Authentication > User Groups`** y haz clic en **Create New**.
 2. Configura:
    * **Name:** `CP-group`
@@ -166,12 +243,23 @@ En este ejercicio, la obligación de autenticarse se mueve **de la política a l
    * **Members:** selecciona el usuario local preconfigurado **`student`**.
 3. Haz clic en **OK**.
 
+### Vía Consola (CLI):
+```fortios
+config user group
+    edit "CP-group"
+        set group-type firewall
+        set member "student"
+    next
+end
+```
+
 > **💡 Nota técnica:** En este laboratorio usamos el usuario local `student` para simplificar la práctica; sin embargo, en producción el grupo del Captive Portal puede (y debe) apuntar a un servidor **LDAP/RADIUS/SAML** o a un portal de invitados en **FortiAuthenticator** para centralizar la gestión y auditoría.
 
 ---
 
 ## Paso 2.2: Habilitar Captive Portal en la interfaz `port3` (con buenas prácticas)
 
+### Vía Interfaz Web (GUI):
 1. Ve a **`Network > Interfaces`** y edita **`port3`**.
 2. En la sección **Network**, habilita **Security mode** y configura:
 
@@ -187,14 +275,27 @@ En este ejercicio, la obligación de autenticarse se mueve **de la política a l
 
 3. Haz clic en **OK** y confirma el mensaje emergente con **OK**.
 
+### Vía Consola (CLI):
+```fortios
+config system interface
+    edit "port3"
+        set security-mode captive-portal
+        set security-groups "CP-group"
+        set security-exempt-list "DNS"
+        set security-redirect-url ""
+    next
+end
+```
+
 > **💡 Nota técnica:** En el laboratorio, FortiGate permite DNS internamente si usas el DNS del lab, pero agregar `DNS` en *Exempt destinations/services* y servidores/IoT en *Exempt sources* es una práctica obligatoria en despliegues reales para no tumbar servicios sin navegador.
 
 ---
 
 ## Paso 2.3: Habilitar el mensaje de Disclaimer (solo por CLI en interfaces cableadas)
 
+### Vía Consola (CLI):
 1. Abre la consola CLI de **Local-FortiGate** y ejecuta:
-   ```text
+   ```fortios
    config firewall policy
        edit 1
            set disclaimer enable
@@ -211,6 +312,7 @@ En este ejercicio, la obligación de autenticarse se mueve **de la política a l
 
 ## Paso 2.4: Autenticarse en el Portal Cautivo y aceptar el Disclaimer
 
+### Vía Cliente Web:
 1. En **Local-Client**, abre una nueva **ventana privada/incógnito** y navega a:
    ```text
    http://www.eicar.org
@@ -222,22 +324,74 @@ En este ejercicio, la obligación de autenticarse se mueve **de la política a l
 3. Se abrirá la pantalla **Terms and Disclaimer Agreement**. Haz clic en **Yes, I agree**.
 4. Serás redirigido a `www.eicar.org`. Abre otra pestaña y navega a `http://www.eicar.com` para generar tráfico adicional.
 
+### Vía Consola (CLI) para Verificación en Vivo:
+```fortios
+# 1. Verificar las sesiones activas asociadas al portal cautivo y disclaimer:
+diagnose firewall auth list
+
+# 2. Consultar logs de tráfico y autenticación en tiempo real:
+execute log filter category 0
+execute log display
+```
+
 > **💡 Nota técnica sobre HTTPS en la vida real:** En este laboratorio usamos URLs HTTP porque el portal intercepta la petición sin fricción. En entornos reales donde casi todo el tráfico es HTTPS (con HSTS), conviene configurar un **certificado SSL firmado por una CA confiable** en `config user setting` (`set auth-cert <certificado>`) para evitar alertas de seguridad en los navegadores.
 
 ---
 
 ## Paso 2.5: Monitorear y comprender el doble registro en Firewall Users
 
+### Vía Interfaz Web (GUI):
 1. En la GUI de **Local-FortiGate**, ve a **`Dashboard > Users & Devices > Firewall Users`** (pantalla completa).
 2. Observarás **dos sesiones activas** para la misma IP (`10.0.1.10`):
    * **Registro 1:** User Name = `student` | User Group = `CP-group` | Method = **`Firewall`**
    * **Registro 2:** User Name = `1` *(corresponde al Policy ID 1)* | Method = **`Disclaimer`**
-3. *(Verificación CLI recomendada)*: Ejecuta en consola:
-   ```text
-   diagnose firewall auth list
-   ```
-   Verás reflejado el usuario autenticado, su IP, el método, el tiempo restante de expiración y el volumen de tráfico.
-4. Para finalizar, selecciona **`student`** en **Firewall Users**, haz clic en **Deauthenticate** > **OK**, y cierra el navegador en **Local-Client**.
+3. Selecciona **`student`** en **Firewall Users**, haz clic en **Deauthenticate** > **OK**, y cierra el navegador en **Local-Client**.
+
+### Vía Consola (CLI):
+```fortios
+# 1. Listar las entradas en memoria (observa las dos entradas para la IP 10.0.1.10):
+diagnose firewall auth list
+
+# 2. Desautenticar al usuario student eliminando su sesión por IP:
+diagnose firewall auth delete 10.0.1.10
+
+# 3. Verificar que la tabla quedó limpia:
+diagnose firewall auth list
+```
+
+---
+
+## Paso 2.6: Limpieza y Restauración Final del Laboratorio (Rollback)
+
+Para dejar el firewall en su estado operativo normal y limpio al concluir la práctica:
+
+### Vía Interfaz Web (GUI):
+1. Ve a **`Network > Interfaces`**, edita **`port3`**, desactiva **Security mode** y guarda.
+2. Ve a **`User & Authentication > User Groups`** y elimina **`CP-group`**.
+
+### Vía Consola (CLI):
+```fortios
+# 1. Desactivar el Portal Cautivo en la interfaz port3:
+config system interface
+    edit "port3"
+        set security-mode none
+        unset security-groups
+        unset security-exempt-list
+    next
+end
+
+# 2. Desactivar el Disclaimer en la política de firewall:
+config firewall policy
+    edit 1
+        set disclaimer disable
+    next
+end
+
+# 3. Eliminar el grupo local creado para el portal:
+config user group
+    delete "CP-group"
+end
+```
 
 ---
 
@@ -245,13 +399,21 @@ En este ejercicio, la obligación de autenticarse se mueve **de la política a l
 
 | Objetivo | Comando CLI en FortiGate |
 | :--- | :--- |
-| Probar usuario contra servidor LDAP | `diagnose test authserver ldap External_Server aduser1 Training!` |
-| Depurar fallos LDAP / RADIUS en vivo | `diagnose debug application fnbamd -1` + `diagnose debug enable` |
-| Detener depuración | `diagnose debug disable` |
-| Listar usuarios autenticados activos | `diagnose firewall auth list` |
-| Desautenticar todas las sesiones activas | `diagnose firewall auth clear` |
-| Revisar `auth-timeout` y certificado del portal | `show full-configuration user setting` |
-| Habilitar Disclaimer en política cableada | `config firewall policy` ➔ `edit <ID>` ➔ `set disclaimer enable` |
+| **Listar revisiones del sistema** | `execute revision list` |
+| **Revertir a revisión base** | `execute revision revert <ID>` |
+| **Configurar servidor LDAP** | `config user ldap` ➔ `edit <Nombre>` |
+| **Probar usuario contra LDAP** | `diagnose test authserver ldap External_Server aduser1 Training!` |
+| **Depurar autenticación (fnbamd)** | `diagnose debug application fnbamd -1` + `diagnose debug enable` |
+| **Detener depuración** | `diagnose debug disable` |
+| **Mapear grupo LDAP a User Group** | `config user group` ➔ `config match` |
+| **Exigir grupo en política de firewall** | `config firewall policy` ➔ `edit <ID>` ➔ `set groups <Grupo>` |
+| **Remover grupo de política (limpieza)** | `config firewall policy` ➔ `edit <ID>` ➔ `unset groups` |
+| **Habilitar Captive Portal en interfaz**| `config system interface` ➔ `edit <port>` ➔ `set security-mode captive-portal` |
+| **Habilitar Disclaimer en política** | `config firewall policy` ➔ `edit <ID>` ➔ `set disclaimer enable` |
+| **Listar usuarios autenticados activos**| `diagnose firewall auth list` |
+| **Desautenticar usuario por IP** | `diagnose firewall auth delete <IP>` |
+| **Desautenticar todas las sesiones** | `diagnose firewall auth clear` |
+| **Revisar settings globales de usuario** | `show full-configuration user setting` |
 
 ---
 
