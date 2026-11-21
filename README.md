@@ -7,13 +7,20 @@ Repositorio y espacio de trabajo para administración, configuración, laborator
 ## 🔗 Repositorio Remoto (GitHub)
 
 * **URL SSH:** `git@github.com:gdiazes/fortigate.git`
-* **Estado de Conexión:** ✅ Verificado y autenticado con éxito vía SSH.
+* **Estado de Conexión:** ✅ Verificado, autenticado y sincronizado con éxito vía SSH.
 * **Rama Principal:** `main`
+
+---
+
+## 📐 Topología de Laboratorio
+
+![Topología NAT](img/nat.png)
 
 ---
 
 ## 📁 Estructura del Proyecto
 
+* **`img/`**: Diagramas y capturas de pantalla de las topologías de red.
 * **`configs/`**: Respaldos y plantillas de configuración de FortiOS (`.conf`, scripts CLI).
 * **`labs/`**: Topologías de laboratorio (PNETLab / EVE-NG), diagramas y planes de direccionamiento.
 * **`scripts/`**: Scripts de automatización (Python, REST API de FortiOS, Ansible).
