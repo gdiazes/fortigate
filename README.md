@@ -1,26 +1,16 @@
 # 🛡️ Proyecto FortiGate - Laboratorios y Automatización
 
-Repositorio para la administración, configuración, guías de laboratorio y automatización de firewalls **FortiGate (FortiOS)** en entornos virtuales (PNETLab / EVE-NG) y redes corporativas.
+Repositorio para la administración, guías de laboratorio y automatización de firewalls **FortiGate (FortiOS)** en entornos virtuales (PNETLab / EVE-NG).
 
 ---
 
-## 📐 Topología de Laboratorio
-
-![Topología NAT](img/nat.png)
-
----
-
-## 📁 Estructura del Repositorio
+## 📁 Contenido del Repositorio
 
 * **`labs/`**:
-  * 📘 [`lab05.md`](labs/lab05.md): **Laboratorio 5: Firewall Authentication** (Autenticación basada en políticas con LDAP / FortiAuthenticator y Portal Cautivo con Disclaimer).
-* **`docs/`**:
-  * 📄 [`GUIA_CONFIGURACION_NAT.md`](docs/GUIA_CONFIGURACION_NAT.md): Guía detallada del enrutamiento y Port Forwarding en Linux Router (`10.160.10.114`).
+  * 📘 [`lab05.md`](labs/lab05.md): **Laboratorio 5: Firewall Authentication** (Autenticación basada en políticas con LDAP / FortiAuthenticator y Portal Cautivo por interfaz con Disclaimer).
 * **`scripts/`**:
-  * ⚙️ [`config_nat_router.sh`](scripts/config_nat_router.sh): Script en Bash con **backup preventivo automático** y reglas DNAT/SNAT completas.
-  * 🔄 [`rollback_nat_router.sh`](scripts/rollback_nat_router.sh): Script de restauración inmediata al estado previo.
-* **`img/`**: Diagramas de red y capturas de topología.
-* **`configs/`**: Plantillas y respaldos de configuración CLI (`.conf`).
+  * ⚙️ [`config_nat_router.sh`](scripts/config_nat_router.sh): Script en Bash con **backup preventivo automático** y reglas DNAT/SNAT completas para acceso a los FortiGate desde Internet.
+  * 🔄 [`rollback_nat_router.sh`](scripts/rollback_nat_router.sh): Script de restauración inmediata al estado previo de iptables.
 
 ---
 

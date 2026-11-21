@@ -1,6 +1,11 @@
-# Archivos temporales y de sistema
+# Carpetas locales excluidas de GitHub (Regla de Skill)
+configs/
+docs/
+img/
+
+# Scripts auxiliares y temporales
+*.py
 __pycache__/
 *.py[cod]
-*$py.class
 .DS_Store
 Thumbs.db
